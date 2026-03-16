@@ -1,0 +1,49 @@
+name: HikvisionViewer
+options:
+  createIntermediateGroups: true
+  deploymentTarget:
+    macOS: "13.0"
+settings:
+  base:
+    SWIFT_VERSION: 6.0
+    PRODUCT_NAME: HikvisionViewer
+    PRODUCT_BUNDLE_IDENTIFIER: com.bgazzera.HikvisionViewer
+    MARKETING_VERSION: 1.0
+    CURRENT_PROJECT_VERSION: 1
+    MACOSX_DEPLOYMENT_TARGET: 13.0
+    CODE_SIGN_STYLE: Automatic
+    DEVELOPMENT_TEAM: ""
+    ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+    LD_RUNPATH_SEARCH_PATHS:
+      - "$(inherited)"
+      - "@executable_path/../Frameworks"
+targets:
+  HikvisionViewer:
+    type: application
+    platform: macOS
+    sources:
+      - path: Sources/HikvisionViewer
+    dependencies:
+      - framework: Vendor/VLCKit/VLCKit.xcframework
+        embed: true
+        codeSign: true
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundleDisplayName: HikvisionViewer
+        INFOPLIST_KEY_CFBundleName: HikvisionViewer
+        INFOPLIST_KEY_CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        INFOPLIST_KEY_CFBundleShortVersionString: $(MARKETING_VERSION)
+        INFOPLIST_KEY_LSMinimumSystemVersion: "13.0"
+        INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.utilities
+        INFOPLIST_KEY_NSHighResolutionCapable: YES
+        INFOPLIST_KEY_NSHumanReadableCopyright: ""
+schemes:
+  HikvisionViewer:
+    build:
+      targets:
+        HikvisionViewer: all
+    run:
+      config: Debug
+    archive:
+      config: Release

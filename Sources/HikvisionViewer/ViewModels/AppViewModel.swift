@@ -118,13 +118,14 @@ final class AppViewModel: ObservableObject {
 
         do {
             try persistConfiguration()
+            let effectiveChannelID = effectiveChannelID(for: configuration.selectedChannelID)
             let url = try RTSPURLBuilder.buildURL(
                 configuration: configuration,
                 password: password,
-                channelID: effectiveChannelID(for: configuration.selectedChannelID)
+                channelID: effectiveChannelID
             )
             vlcService.shouldReconnect = configuration.autoReconnect
-            try vlcService.connect(streamURL: url)
+            try vlcService.connect(streamURL: url, presentation: presentation(for: effectiveChannelID))
         } catch {
             lastError = error.localizedDescription
             playbackState = .error(error.localizedDescription)
@@ -150,7 +151,7 @@ final class AppViewModel: ObservableObject {
             )
             vlcService.shouldReconnect = configuration.autoReconnect
             isShowingDoorbellStream = true
-            try vlcService.connect(streamURL: url)
+            try vlcService.connect(streamURL: url, presentation: .default)
         } catch {
             lastError = error.localizedDescription
             playbackState = .error(error.localizedDescription)
@@ -374,6 +375,10 @@ final class AppViewModel: ObservableObject {
         }
 
         return "\(baseChannel)\(streamSuffix)"
+    }
+
+    private func presentation(for effectiveChannelID: String) -> VideoPresentation {
+        effectiveChannelID == "001" ? .forced16x9 : .default
     }
 
     private func shouldApply(_ candidate: String?, current: String, fillMissingOnly: Bool, treatDefaultStringAsMissing: Bool = false, defaultValue: String = "") -> Bool {

@@ -13,6 +13,7 @@ final class VLCLauncherService: NSObject, VLCMediaPlayerDelegate {
     private var reconnectWorkItem: DispatchWorkItem?
     private var reconnectAttempt = 0
     private var currentStreamURL: URL?
+    private var currentPresentation = VideoPresentation.default
     private var userInitiatedStop = false
     private var desiredMuted = false
 
@@ -29,8 +30,9 @@ final class VLCLauncherService: NSObject, VLCMediaPlayerDelegate {
         mediaPlayer.drawable = videoView
     }
 
-    func connect(streamURL: URL) throws {
+    func connect(streamURL: URL, presentation: VideoPresentation = .default) throws {
         currentStreamURL = streamURL
+        currentPresentation = presentation
         userInitiatedStop = false
         reconnectAttempt = 0
         reconnectWorkItem?.cancel()
@@ -53,7 +55,9 @@ final class VLCLauncherService: NSObject, VLCMediaPlayerDelegate {
         reconnectWorkItem?.cancel()
         reconnectWorkItem = nil
         currentStreamURL = nil
+        currentPresentation = .default
         mediaPlayer.stop()
+        applyPresentation(.default)
         emit(.stopped)
     }
 
@@ -84,6 +88,7 @@ final class VLCLauncherService: NSObject, VLCMediaPlayerDelegate {
             }
         case .playing:
             reconnectAttempt = 0
+            applyPresentation(currentPresentation)
             applyMuteState()
             emit(.playing)
         case .paused:
@@ -117,6 +122,7 @@ final class VLCLauncherService: NSObject, VLCMediaPlayerDelegate {
         media.addOption(":clock-jitter=0")
 
         mediaPlayer.media = media
+        applyPresentation(currentPresentation)
         applyMuteState()
         emit(reportAsReconnect ? .reconnecting(reconnectAttempt) : .launching)
         mediaPlayer.play()
@@ -124,6 +130,20 @@ final class VLCLauncherService: NSObject, VLCMediaPlayerDelegate {
 
     private func applyMuteState() {
         mediaPlayer.audio?.isMuted = desiredMuted
+    }
+
+    private func applyPresentation(_ presentation: VideoPresentation) {
+        mediaPlayer.scaleFactor = 0
+        videoView.fillScreen = false
+
+        switch presentation {
+        case .default:
+            mediaPlayer.videoCropGeometry = nil
+            mediaPlayer.videoAspectRatio = nil
+        case .forced16x9:
+            mediaPlayer.videoCropGeometry = nil
+            mediaPlayer.videoAspectRatio = strdup("16:9")
+        }
     }
 
     private func scheduleReconnect(message: String) {
@@ -151,4 +171,9 @@ final class VLCLauncherService: NSObject, VLCMediaPlayerDelegate {
     private func emit(_ state: PlaybackState) {
         onStateChange?(state)
     }
+}
+
+enum VideoPresentation {
+    case `default`
+    case forced16x9
 }

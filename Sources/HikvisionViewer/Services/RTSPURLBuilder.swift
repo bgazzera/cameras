@@ -51,7 +51,13 @@ enum RTSPURLBuilder {
     }
 
     private static func normalizeChannelID(_ value: String) -> String {
-        guard let numericValue = Int(value) else {
+        let trimmedValue = value.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        if trimmedValue.count >= 3 {
+            return trimmedValue
+        }
+
+        guard let numericValue = Int(trimmedValue) else {
             return value
         }
 

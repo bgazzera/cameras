@@ -29,6 +29,7 @@ targets:
         codeSign: true
     settings:
       base:
+        CODE_SIGN_ENTITLEMENTS: Sources/HikvisionViewer/HikvisionViewer.entitlements
         GENERATE_INFOPLIST_FILE: YES
         INFOPLIST_KEY_CFBundleDisplayName: HikvisionViewer
         INFOPLIST_KEY_CFBundleName: HikvisionViewer
@@ -36,8 +37,12 @@ targets:
         INFOPLIST_KEY_CFBundleShortVersionString: $(MARKETING_VERSION)
         INFOPLIST_KEY_LSMinimumSystemVersion: "13.0"
         INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.utilities
+        INFOPLIST_KEY_NSMicrophoneUsageDescription: "HikvisionViewer uses the microphone for doorbell talkback when you answer a ring."
         INFOPLIST_KEY_NSHighResolutionCapable: YES
         INFOPLIST_KEY_NSHumanReadableCopyright: ""
+      configs:
+        Release:
+          ENABLE_HARDENED_RUNTIME: YES
 schemes:
   HikvisionViewer:
     build:

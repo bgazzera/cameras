@@ -27,4 +27,13 @@ enum PlaybackState: Equatable {
             return message
         }
     }
+
+    var isActivePlayback: Bool {
+        switch self {
+        case .launching, .playing, .paused, .reconnecting:
+            return true
+        case .idle, .stopped, .error:
+            return false
+        }
+    }
 }

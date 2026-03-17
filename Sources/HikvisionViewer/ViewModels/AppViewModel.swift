@@ -20,13 +20,18 @@ final class AppViewModel: ObservableObject {
     @Published var isMuted = false
     @Published var isShowingDoorbellStream = false
     @Published var isDiscovering = false
+    @Published var isTalkbackActive = false
+    @Published var isTalkbackBusy = false
     @Published var lastError = ""
 
+    private let appAttentionService = AppAttentionService()
     private let credentialStore = CredentialStore()
     private let doorbellService = DoorbellService()
     private let envFileLoader = EnvFileLoader()
+    private let microphonePermissionService = MicrophonePermissionService()
     private let notificationService = LocalNotificationService()
     private let nvrService = HikvisionNVRService()
+    private let talkbackService = DoorbellTalkbackService()
     private let vlcService = VLCLauncherService()
     private let defaultsKey = "hikvisionViewer.configuration"
     private let defaults = UserDefaults(suiteName: "com.bgazzera.HikvisionViewer") ?? .standard
@@ -51,8 +56,12 @@ final class AppViewModel: ObservableObject {
         !configuration.trimmedDoorbellHost.isEmpty && !configuration.trimmedUsername.isEmpty && !password.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
+    var isDoorbellPlaybackActive: Bool {
+        isShowingDoorbellStream && playbackState.isActivePlayback
+    }
+
     var canAttemptDoorbellControl: Bool {
-        doorbellCallState.isEngaged
+        doorbellCallState.isEngaged && isDoorbellPlaybackActive && !isTalkbackBusy
     }
 
     var doorbellControlTitle: String {
@@ -61,6 +70,18 @@ final class AppViewModel: ObservableObject {
 
     var streamModeTitle: String {
         configuration.preferHD ? "HD" : "SD"
+    }
+
+    var canToggleTalkback: Bool {
+        canMonitorDoorbell && isDoorbellPlaybackActive && !isTalkbackBusy
+    }
+
+    var talkbackButtonTitle: String {
+        if isTalkbackBusy {
+            return isTalkbackActive ? "Stopping Mic..." : "Starting Mic..."
+        }
+
+        return isTalkbackActive ? "Mic Off" : "Mic On"
     }
 
     init() {
@@ -90,6 +111,10 @@ final class AppViewModel: ObservableObject {
 
     deinit {
         doorbellMonitorTask?.cancel()
+        let talkbackService = talkbackService
+        Task {
+            await talkbackService.stop()
+        }
     }
 
     func discoverChannels() async {
@@ -114,6 +139,7 @@ final class AppViewModel: ObservableObject {
 
     func connect() {
         lastError = ""
+        stopTalkbackIfNeeded()
         isShowingDoorbellStream = false
 
         do {
@@ -195,10 +221,44 @@ final class AppViewModel: ObservableObject {
     }
 
     func handleDoorbellControl() {
+        guard canAttemptDoorbellControl else {
+            return
+        }
+
         Task {
             do {
                 let command: DoorbellCallSignalCommand = doorbellCallState.isActive ? .hangUp : .answer
-                try await doorbellService.sendCallSignal(configuration: configuration, password: password, command: command)
+
+                if command == .answer {
+                    try await microphonePermissionService.requestAccessIfNeeded()
+                    try await doorbellService.sendCallSignal(configuration: configuration, password: password, command: command)
+                    try await Task.sleep(nanoseconds: 300_000_000)
+                    try await startTalkback(clearIncomingCall: false)
+                } else {
+                    await stopTalkback()
+                    try await doorbellService.sendCallSignal(configuration: configuration, password: password, command: command)
+                }
+            } catch {
+                await MainActor.run {
+                    self.lastError = error.localizedDescription
+                }
+            }
+        }
+    }
+
+    func toggleTalkback() {
+        guard canToggleTalkback || isTalkbackActive else {
+            return
+        }
+
+        Task {
+            do {
+                if isTalkbackActive {
+                    await stopTalkback()
+                    return
+                }
+
+                try await startTalkback(clearIncomingCall: false)
             } catch {
                 await MainActor.run {
                     self.lastError = error.localizedDescription
@@ -484,6 +544,9 @@ final class AppViewModel: ObservableObject {
             return
         }
 
+        appAttentionService.playDoorbellSound()
+        appAttentionService.bringApplicationToFront()
+
         if configuration.autoSwitchToDoorbellOnRing {
             connectToDoorbell()
         }
@@ -492,6 +555,62 @@ final class AppViewModel: ObservableObject {
             Task {
                 await notificationService.notifyDoorbellRinging()
             }
+        }
+    }
+
+    private func startTalkback(clearIncomingCall: Bool) async throws {
+        guard isDoorbellPlaybackActive else {
+            return
+        }
+
+        await MainActor.run {
+            self.lastError = ""
+            self.isTalkbackBusy = true
+        }
+
+        defer {
+            Task { @MainActor in
+                self.isTalkbackBusy = false
+            }
+        }
+
+        do {
+            try await microphonePermissionService.requestAccessIfNeeded()
+
+            if clearIncomingCall && doorbellCallState.isRinging {
+                try await doorbellService.sendCallSignal(configuration: configuration, password: password, command: .answer)
+                try await Task.sleep(nanoseconds: 300_000_000)
+                try await doorbellService.sendCallSignal(configuration: configuration, password: password, command: .hangUp)
+                try await Task.sleep(nanoseconds: 200_000_000)
+            }
+
+            try await talkbackService.start(configuration: configuration, password: password)
+            await MainActor.run {
+                self.isTalkbackActive = true
+            }
+        } catch {
+            await talkbackService.stop()
+            await MainActor.run {
+                self.isTalkbackActive = false
+            }
+            throw error
+        }
+    }
+
+    private func stopTalkback() async {
+        await talkbackService.stop()
+        await MainActor.run {
+            self.isTalkbackActive = false
+        }
+    }
+
+    private func stopTalkbackIfNeeded() {
+        guard isTalkbackActive else {
+            return
+        }
+
+        Task {
+            await stopTalkback()
         }
     }
 }

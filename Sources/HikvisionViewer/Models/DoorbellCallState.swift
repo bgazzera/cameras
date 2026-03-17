@@ -73,6 +73,6 @@ enum DoorbellCallState: Equatable {
     }
 
     var controlTitle: String {
-        isActive ? "Hang" : "Talk"
+        isActive ? "Hang" : "Answer"
     }
 }

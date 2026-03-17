@@ -121,7 +121,7 @@ struct SettingsView: View {
         Section("Playback") {
             Toggle("Reconnect automatically if VLC exits unexpectedly", isOn: $viewModel.configuration.autoReconnect)
 
-            Text("Talk and hang controls are shown in the main window, but the writable call-signal payload for this DS-KV6113-WPE1 firmware still needs validation before true talkback can be enabled.")
+            Text("Answer and hang-up use the Hikvision call-signal endpoint. The Mic button now opens Hikvision's native TwoWayAudio backchannel and streams microphone audio directly to the device. If the doorbell is actively ringing, the app clears the intercom call first before opening the talkback channel.")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
 

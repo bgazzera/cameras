@@ -83,28 +83,43 @@ struct ContentView: View {
             }
             .buttonStyle(.borderedProminent)
             .tint(viewModel.isShowingDoorbellStream ? .green : .green.opacity(0.8))
+            .frame(minHeight: 34)
+
+            HStack(spacing: 10) {
+                Button(viewModel.doorbellControlTitle) {
+                    viewModel.handleDoorbellControl()
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(viewModel.doorbellCallState.isActive ? .red : .orange)
+                .disabled(!viewModel.canAttemptDoorbellControl)
+                .frame(minHeight: 34)
+
+                Button(viewModel.talkbackButtonTitle) {
+                    viewModel.toggleTalkback()
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(viewModel.isTalkbackActive ? .red : .mint)
+                .disabled(!viewModel.canToggleTalkback)
+                .frame(minHeight: 34)
+            }
 
             Divider()
                 .frame(height: 24)
 
-            Button(viewModel.doorbellControlTitle) {
-                viewModel.handleDoorbellControl()
-            }
-            .buttonStyle(.borderedProminent)
-            .tint(viewModel.doorbellCallState.isActive ? .red : .orange)
-            .disabled(!viewModel.canAttemptDoorbellControl)
+            HStack(spacing: 10) {
+                Button(viewModel.streamModeTitle) {
+                    viewModel.toggleDoorbellStreamMode()
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(viewModel.streamModeTitle == "HD" ? .blue : .teal)
+                .frame(minHeight: 34)
 
-            Button(viewModel.streamModeTitle) {
-                viewModel.toggleDoorbellStreamMode()
+                Button(viewModel.isMuted ? "Unmute" : "Mute") {
+                    viewModel.toggleMute()
+                }
+                .buttonStyle(.borderedProminent)
+                .frame(minHeight: 34)
             }
-            .buttonStyle(.borderedProminent)
-            .tint(viewModel.streamModeTitle == "HD" ? .blue : .teal)
-
-            Button(viewModel.isMuted ? "Unmute" : "Mute") {
-                viewModel.toggleMute()
-            }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.large)
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 12)

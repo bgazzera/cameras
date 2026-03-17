@@ -7,6 +7,8 @@ cd "$repo_root"
 install_root="${HIKVISION_VIEWER_INSTALL_DIR:-$HOME/Applications}"
 app_bundle="$install_root/HikvisionViewer.app"
 codesign_identity="${HIKVISION_VIEWER_CODESIGN_IDENTITY:-}"
+iconset_source="$repo_root/Sources/HikvisionViewer/Assets.xcassets/AppIcon.appiconset"
+icon_name="HikvisionViewer"
 
 if [[ -z "$codesign_identity" ]]; then
 	first_identity="$(security find-identity -p codesigning -v 2>/dev/null | awk '/\) / {print $2; exit}')"
@@ -29,6 +31,16 @@ frameworks_dir="$contents_dir/Frameworks"
 resources_dir="$contents_dir/Resources"
 plist_path="$contents_dir/Info.plist"
 sign_args=(--force --sign "$codesign_identity" --timestamp=none)
+temp_dir="$(mktemp -d)"
+iconset_dir="$temp_dir/${icon_name}.iconset"
+icon_file="$resources_dir/${icon_name}.icns"
+entitlements_path="$repo_root/Sources/HikvisionViewer/HikvisionViewer.entitlements"
+
+cleanup() {
+	rm -rf "$temp_dir"
+}
+
+trap cleanup EXIT
 
 echo "Preparing app bundle..."
 rm -rf "$app_bundle"
@@ -50,6 +62,8 @@ cat > "$plist_path" <<'PLIST'
 	<string>com.bgazzera.HikvisionViewer</string>
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
+	<key>CFBundleIconFile</key>
+	<string>HikvisionViewer</string>
 	<key>CFBundleName</key>
 	<string>HikvisionViewer</string>
 	<key>CFBundlePackageType</key>
@@ -60,6 +74,8 @@ cat > "$plist_path" <<'PLIST'
 	<string>1</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>13.0</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>HikvisionViewer uses the microphone for doorbell talkback when you answer a ring.</string>
 	<key>NSHighResolutionCapable</key>
 	<true/>
 	<key>NSPrincipalClass</key>
@@ -71,13 +87,17 @@ PLIST
 cp "$bin_path/HikvisionViewer" "$macos_dir/HikvisionViewer"
 cp -R "$source_framework" "$frameworks_dir/"
 
+mkdir -p "$iconset_dir"
+cp "$iconset_source"/*.png "$iconset_dir/"
+iconutil -c icns "$iconset_dir" -o "$icon_file"
+
 if [[ -f "$repo_root/.env" ]]; then
 	cp "$repo_root/.env" "$resources_dir/defaults.env"
 fi
 
 echo "Signing app bundle with identity: $codesign_identity"
 codesign "${sign_args[@]}" "$frameworks_dir/VLCKit.framework"
-codesign "${sign_args[@]}" --deep "$app_bundle"
+codesign "${sign_args[@]}" --entitlements "$entitlements_path" --deep "$app_bundle"
 
 if pgrep -x HikvisionViewer >/dev/null; then
 	pkill -x HikvisionViewer || true
@@ -85,4 +105,4 @@ if pgrep -x HikvisionViewer >/dev/null; then
 fi
 
 echo "Launching HikvisionViewer.app..."
-"$macos_dir/HikvisionViewer" >/tmp/hikvision-viewer.log 2>&1 & disown
+open "$app_bundle"

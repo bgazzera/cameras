@@ -7,10 +7,69 @@ struct DoorbellService {
     }
 
     func sendCallSignal(configuration: NVRConfiguration, password: String, command: DoorbellCallSignalCommand) async throws {
-        let _ = configuration
-        let _ = password
-        let _ = command
-        throw DoorbellServiceError.callControlSchemaUnverified
+        let host = configuration.trimmedDoorbellHost
+        let username = configuration.trimmedUsername
+        let trimmedPassword = password.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        guard !host.isEmpty else {
+            throw DoorbellServiceError.missingHost
+        }
+
+        guard !username.isEmpty else {
+            throw DoorbellServiceError.missingUsername
+        }
+
+        guard !trimmedPassword.isEmpty else {
+            throw DoorbellServiceError.missingPassword
+        }
+
+        var components = URLComponents()
+        components.scheme = "http"
+        components.host = host
+        components.port = configuration.doorbellHTTPPort
+        components.path = "/ISAPI/VideoIntercom/callSignal"
+        components.queryItems = [URLQueryItem(name: "format", value: "json")]
+
+        guard let url = components.url else {
+            throw DoorbellServiceError.invalidEndpoint
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "PUT"
+        request.timeoutInterval = 8
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONEncoder().encode(CallSignalRequest(command: command.apiValue))
+
+        let delegate = DigestAuthenticationDelegate(username: username, password: trimmedPassword)
+        let session = URLSession(configuration: .ephemeral, delegate: delegate, delegateQueue: nil)
+        defer { session.invalidateAndCancel() }
+
+        let (data, response) = try await session.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw DoorbellServiceError.invalidResponse
+        }
+
+        switch httpResponse.statusCode {
+        case 200...299:
+            break
+        case 401:
+            throw DoorbellServiceError.authenticationFailed
+        default:
+            if let responseStatus = try? JSONDecoder().decode(HikvisionResponseStatus.self, from: data) {
+                throw DoorbellServiceError.commandFailed(responseStatus.statusString, responseStatus.subStatusCode)
+            }
+
+            throw DoorbellServiceError.httpStatus(httpResponse.statusCode)
+        }
+
+        if !data.isEmpty,
+           let responseStatus = try? JSONDecoder().decode(HikvisionResponseStatus.self, from: data),
+           responseStatus.statusString.caseInsensitiveCompare("ok") != .orderedSame,
+           responseStatus.statusCode != 1 {
+            throw DoorbellServiceError.commandFailed(responseStatus.statusString, responseStatus.subStatusCode)
+        }
     }
 
     private func fetchCallStatus(configuration: NVRConfiguration, password: String) async throws -> String {
@@ -71,6 +130,15 @@ struct DoorbellService {
 enum DoorbellCallSignalCommand {
     case answer
     case hangUp
+
+    var apiValue: String {
+        switch self {
+        case .answer:
+            return "answer"
+        case .hangUp:
+            return "hangUp"
+        }
+    }
 }
 
 enum DoorbellServiceError: LocalizedError {
@@ -81,7 +149,7 @@ enum DoorbellServiceError: LocalizedError {
     case invalidResponse
     case authenticationFailed
     case httpStatus(Int)
-    case callControlSchemaUnverified
+    case commandFailed(String, String?)
 
     var errorDescription: String? {
         switch self {
@@ -99,8 +167,12 @@ enum DoorbellServiceError: LocalizedError {
             return "The Portero rejected the supplied credentials."
         case .httpStatus(let code):
             return "The Portero endpoint returned HTTP \(code)."
-        case .callControlSchemaUnverified:
-            return "Talk and hang controls are visible, but the writable Portero call-signal payload is still unverified on this firmware."
+        case .commandFailed(let status, let subStatus):
+            if let subStatus, !subStatus.isEmpty {
+                return "The Portero rejected the call command: \(status) (\(subStatus))."
+            }
+
+            return "The Portero rejected the call command: \(status)."
         }
     }
 }
@@ -115,6 +187,34 @@ private struct DoorbellCallStatusResponse: Decodable {
 
 private struct DoorbellCallStatusPayload: Decodable {
     let status: String
+}
+
+private struct CallSignalRequest: Encodable {
+    let callSignal: CallSignalPayload
+
+    init(command: String) {
+        callSignal = CallSignalPayload(cmdType: command)
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case callSignal = "CallSignal"
+    }
+}
+
+private struct CallSignalPayload: Encodable {
+    let cmdType: String
+}
+
+private struct HikvisionResponseStatus: Decodable {
+    let statusCode: Int
+    let statusString: String
+    let subStatusCode: String?
+
+    enum CodingKeys: String, CodingKey {
+        case statusCode
+        case statusString
+        case subStatusCode
+    }
 }
 
 private final class DigestAuthenticationDelegate: NSObject, URLSessionTaskDelegate {

@@ -1,5 +1,6 @@
 .DS_Store
 /.build
+/build
 /Packages
 xcuserdata/
 DerivedData/
@@ -7,3 +8,8 @@ DerivedData/
 .swiftpm/xcode/package.xcworkspace/contents.xcworkspacedata
 .netrc
 .env
+*.dSYM/
+*.xcarchive/
+*.xcarchive
+*.zip
+Vendor/**/dSYMs/

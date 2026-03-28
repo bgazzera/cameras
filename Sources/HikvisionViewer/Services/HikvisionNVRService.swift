@@ -19,8 +19,8 @@ struct HikvisionNVRService {
         }
 
         let candidates = [
-            "/ISAPI/Streaming/channels",
             "/ISAPI/ContentMgmt/InputProxy/channels",
+            "/ISAPI/Streaming/channels",
         ]
 
         var lastError: Error?
@@ -29,7 +29,7 @@ struct HikvisionNVRService {
                 let url = try makeURL(host: host, port: configuration.httpPort, path: path)
                 let channels = try await fetchChannels(url: url, username: username, password: trimmedPassword)
                 if !channels.isEmpty {
-                    return channels.sorted { $0.id < $1.id }
+                    return normalizedChannels(channels, forPath: path)
                 }
             } catch {
                 lastError = error
@@ -40,16 +40,41 @@ struct HikvisionNVRService {
     }
 
     func fallbackChannels(selectedChannelID: String) -> [Channel] {
-        let common = (1...16).map { index in
-            let id = "\(index)01"
-            return Channel(id: id, name: "Camera \(index)")
+        let trimmedChannelID = selectedChannelID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedChannelID.isEmpty, trimmedChannelID != "0" else {
+            return []
         }
 
-        if common.contains(where: { $0.id == selectedChannelID }) {
-            return common
+        return [Channel(id: trimmedChannelID, name: trimmedChannelID)]
+    }
+
+    private func sortChannels(_ channels: [Channel]) -> [Channel] {
+        channels.sorted { lhs, rhs in
+            let lhsValue = Int(lhs.id) ?? .max
+            let rhsValue = Int(rhs.id) ?? .max
+
+            if lhsValue != rhsValue {
+                return lhsValue < rhsValue
+            }
+
+            return lhs.id < rhs.id
+        }
+    }
+
+    private func normalizedChannels(_ channels: [Channel], forPath path: String) -> [Channel] {
+        if path == "/ISAPI/ContentMgmt/InputProxy/channels" {
+            return sortChannels(channels)
         }
 
-        return [Channel(id: selectedChannelID, name: "Manual Channel")]
+        let mainStreams = channels.filter { channel in
+            guard let numericID = Int(channel.id) else {
+                return true
+            }
+
+            return numericID < 100 || numericID % 100 == 1
+        }
+
+        return sortChannels(mainStreams.isEmpty ? channels : mainStreams)
     }
 
     private func makeURL(host: String, port: Int, path: String) throws -> URL {
@@ -69,11 +94,11 @@ struct HikvisionNVRService {
     private func fetchChannels(url: URL, username: String, password: String) async throws -> [Channel] {
         var request = URLRequest(url: url)
         request.timeoutInterval = 8
-        request.setValue(basicAuthorizationHeader(username: username, password: password), forHTTPHeaderField: "Authorization")
         request.setValue("application/xml", forHTTPHeaderField: "Accept")
 
-        let session = URLSession(configuration: .ephemeral)
-        let (data, response) = try await session.data(for: request)
+        let authDelegate = HTTPAuthenticationDelegate(username: username, password: password)
+        let session = URLSession(configuration: .ephemeral, delegate: authDelegate, delegateQueue: nil)
+        let (data, response) = try await session.data(for: request, delegate: authDelegate)
 
         guard let httpResponse = response as? HTTPURLResponse else {
             throw HikvisionNVRServiceError.invalidResponse
@@ -91,10 +116,26 @@ struct HikvisionNVRService {
         let parser = ChannelXMLParser()
         return try parser.parse(data: data)
     }
+}
 
-    private func basicAuthorizationHeader(username: String, password: String) -> String {
-        let token = Data("\(username):\(password)".utf8).base64EncodedString()
-        return "Basic \(token)"
+private final class HTTPAuthenticationDelegate: NSObject, URLSessionTaskDelegate {
+    private let username: String
+    private let password: String
+
+    init(username: String, password: String) {
+        self.username = username
+        self.password = password
+    }
+
+    func urlSession(_ session: URLSession, task: URLSessionTask, didReceive challenge: URLAuthenticationChallenge, completionHandler: @escaping @Sendable (URLSession.AuthChallengeDisposition, URLCredential?) -> Void) {
+        let method = challenge.protectionSpace.authenticationMethod
+        guard method == NSURLAuthenticationMethodHTTPBasic || method == NSURLAuthenticationMethodHTTPDigest else {
+            completionHandler(.performDefaultHandling, nil)
+            return
+        }
+
+        let credential = URLCredential(user: username, password: password, persistence: .forSession)
+        completionHandler(.useCredential, credential)
     }
 }
 

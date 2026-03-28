@@ -9,6 +9,6 @@ struct PlayerContainerView: NSViewRepresentable {
     }
 
     func updateNSView(_ nsView: VLCVideoView, context: Context) {
-        nsView.fillScreen = false
+        nsView.frame = nsView.superview?.bounds ?? nsView.frame
     }
 }

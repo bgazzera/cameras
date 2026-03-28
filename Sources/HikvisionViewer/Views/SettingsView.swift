@@ -46,29 +46,8 @@ struct SettingsView: View {
 
     private var channelSection: some View {
         Section("Channels") {
-            HStack(alignment: .center) {
-                TextField("Manual Channel ID", text: $viewModel.configuration.selectedChannelID)
-                    .textFieldStyle(.roundedBorder)
-
-                Button(viewModel.isDiscovering ? "Discovering..." : "Discover Channels") {
-                    Task {
-                        await viewModel.discoverChannels()
-                    }
-                }
-                .disabled(viewModel.isDiscovering)
-            }
-
-            if !viewModel.channels.isEmpty {
-                Picker("Discovered Channels", selection: $viewModel.configuration.selectedChannelID) {
-                    ForEach(viewModel.channels) { channel in
-                        Text(channel.displayName).tag(channel.id)
-                    }
-                }
-                .pickerStyle(.menu)
-                .onChange(of: viewModel.configuration.selectedChannelID) { newValue in
-                    viewModel.updateSelectedChannel(newValue)
-                }
-            }
+            TextField("Manual Channel ID", text: $viewModel.configuration.selectedChannelID)
+                .textFieldStyle(.roundedBorder)
         }
     }
 

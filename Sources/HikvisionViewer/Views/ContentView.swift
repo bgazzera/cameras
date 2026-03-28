@@ -21,7 +21,7 @@ struct ContentView: View {
     private var playerSection: some View {
         ZStack {
             PlayerContainerView(videoView: viewModel.videoView)
-                .frame(minHeight: 420)
+                .frame(maxWidth: .infinity, minHeight: 420, alignment: .topLeading)
                 .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
                 .overlay(
                     RoundedRectangle(cornerRadius: 16, style: .continuous)
@@ -68,12 +68,12 @@ struct ContentView: View {
         HStack(spacing: 12) {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 10) {
-                    ForEach(viewModel.cameraPresets) { preset in
-                        Button(preset.title) {
-                            viewModel.connect(to: preset.channelID)
+                    ForEach(viewModel.visibleChannels) { channel in
+                        Button(channelShortcutTitle(for: channel)) {
+                            viewModel.connect(to: channel.id)
                         }
                         .buttonStyle(.borderedProminent)
-                        .tint(viewModel.configuration.selectedChannelID == preset.channelID ? .accentColor : .gray.opacity(0.85))
+                        .tint(viewModel.configuration.selectedChannelID == channel.id ? .accentColor : .gray.opacity(0.85))
                     }
                 }
             }
@@ -124,5 +124,18 @@ struct ContentView: View {
         .padding(.horizontal, 14)
         .padding(.vertical, 12)
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+
+    private func channelShortcutTitle(for channel: Channel) -> String {
+        let trimmedName = channel.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmedName.isEmpty || trimmedName == channel.id {
+            if channel.id == "0" {
+                return "Channel 0"
+            }
+
+            return "Channel \(channel.id)"
+        }
+
+        return trimmedName
     }
 }

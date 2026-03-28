@@ -143,6 +143,10 @@ final class VLCLauncherService: NSObject, VLCMediaPlayerDelegate {
         case .forced16x9:
             mediaPlayer.videoCropGeometry = nil
             mediaPlayer.videoAspectRatio = strdup("16:9")
+        case .fillWidth16x9:
+            mediaPlayer.videoCropGeometry = nil
+            mediaPlayer.videoAspectRatio = strdup("16:9")
+            videoView.fillScreen = true
         }
     }
 
@@ -176,4 +180,5 @@ final class VLCLauncherService: NSObject, VLCMediaPlayerDelegate {
 enum VideoPresentation {
     case `default`
     case forced16x9
+    case fillWidth16x9
 }

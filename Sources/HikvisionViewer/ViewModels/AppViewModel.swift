@@ -1,15 +1,6 @@
 import Foundation
 import VLCKit
 
-struct CameraPreset: Identifiable, Hashable {
-    let title: String
-    let channelID: String
-
-    var id: String {
-        channelID
-    }
-}
-
 @MainActor
 final class AppViewModel: ObservableObject {
     @Published var configuration = NVRConfiguration()
@@ -33,23 +24,28 @@ final class AppViewModel: ObservableObject {
     private let nvrService = HikvisionNVRService()
     private let talkbackService = DoorbellTalkbackService()
     private let vlcService = VLCLauncherService()
+    private let zeroChannel = Channel(id: "0", name: "Channel 0")
     private let defaultsKey = "hikvisionViewer.configuration"
     private let defaults = UserDefaults(suiteName: "com.bgazzera.HikvisionViewer") ?? .standard
-    private let startupChannelID = "0"
     private var doorbellMonitorTask: Task<Void, Never>?
-
-    let cameraPresets: [CameraPreset] = [
-        CameraPreset(title: "Channel 0", channelID: "0"),
-        CameraPreset(title: "Frente 1", channelID: "101"),
-        CameraPreset(title: "Frente 2", channelID: "201"),
-        CameraPreset(title: "Living", channelID: "301"),
-        CameraPreset(title: "Jardin", channelID: "501"),
-        CameraPreset(title: "Cocina", channelID: "601"),
-        CameraPreset(title: "Hall 1P", channelID: "701"),
-    ]
+    private var startupTask: Task<Void, Never>?
 
     var videoView: VLCVideoView {
         vlcService.videoView
+    }
+
+    var visibleChannels: [Channel] {
+        var visible = [zeroChannel]
+        visible.append(contentsOf: channels.filter { $0.id != zeroChannel.id })
+
+        let manualChannelID = configuration.selectedChannelID.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !manualChannelID.isEmpty,
+           manualChannelID != zeroChannel.id,
+           !visible.contains(where: { $0.id == manualChannelID }) {
+            visible.append(Channel(id: manualChannelID, name: manualChannelID))
+        }
+
+        return visible
     }
 
     var canMonitorDoorbell: Bool {
@@ -90,7 +86,6 @@ final class AppViewModel: ObservableObject {
         applyEnvDefaultsToMissingFields()
         applyEnvironmentOverrides()
         restorePasswordIfNeeded()
-        configuration.selectedChannelID = startupChannelID
         isMuted = true
         vlcService.setMuted(true)
         channels = nvrService.fallbackChannels(selectedChannelID: configuration.selectedChannelID)
@@ -106,10 +101,13 @@ final class AppViewModel: ObservableObject {
         }
 
         restartDoorbellMonitoring()
-        startupConnectIfPossible()
+        startupTask = Task { [weak self] in
+            await self?.startupDiscoverAndConnectIfPossible()
+        }
     }
 
     deinit {
+        startupTask?.cancel()
         doorbellMonitorTask?.cancel()
         let talkbackService = talkbackService
         Task {
@@ -118,23 +116,7 @@ final class AppViewModel: ObservableObject {
     }
 
     func discoverChannels() async {
-        isDiscovering = true
-        lastError = ""
-        defer { isDiscovering = false }
-
-        do {
-            try persistConfiguration()
-            let discovered = try await nvrService.discoverChannels(configuration: configuration, password: password)
-            channels = discovered
-            if !discovered.contains(where: { $0.id == configuration.selectedChannelID }), let first = discovered.first {
-                configuration.selectedChannelID = first.id
-            }
-            try persistConfiguration()
-        } catch {
-            channels = nvrService.fallbackChannels(selectedChannelID: configuration.selectedChannelID)
-            lastError = error.localizedDescription
-            playbackState = .error(error.localizedDescription)
-        }
+        _ = await performChannelDiscovery(selection: .preserveCurrentOrFirst)
     }
 
     func connect() {
@@ -438,7 +420,7 @@ final class AppViewModel: ObservableObject {
     }
 
     private func presentation(for effectiveChannelID: String) -> VideoPresentation {
-        effectiveChannelID == "001" ? .forced16x9 : .default
+        effectiveChannelID == "001" ? .fillWidth16x9 : .default
     }
 
     private func shouldApply(_ candidate: String?, current: String, fillMissingOnly: Bool, treatDefaultStringAsMissing: Bool = false, defaultValue: String = "") -> Bool {
@@ -494,14 +476,50 @@ final class AppViewModel: ObservableObject {
         }
     }
 
-    private func startupConnectIfPossible() {
+    @discardableResult
+    private func performChannelDiscovery(selection: ChannelDiscoverySelection) async -> Bool {
+        isDiscovering = true
+        lastError = ""
+        defer { isDiscovering = false }
+
+        do {
+            try persistConfiguration()
+            let discovered = try await nvrService.discoverChannels(configuration: configuration, password: password)
+            channels = discovered
+
+            switch selection {
+            case .firstDiscovered:
+                if let first = discovered.first {
+                    configuration.selectedChannelID = first.id
+                }
+            case .preserveCurrentOrFirst:
+                if !discovered.contains(where: { $0.id == configuration.selectedChannelID }), let first = discovered.first {
+                    configuration.selectedChannelID = first.id
+                }
+            }
+
+            try persistConfiguration()
+            return true
+        } catch {
+            channels = nvrService.fallbackChannels(selectedChannelID: configuration.selectedChannelID)
+            lastError = error.localizedDescription
+            playbackState = .error(error.localizedDescription)
+            return false
+        }
+    }
+
+    private func startupDiscoverAndConnectIfPossible() async {
         guard !configuration.trimmedHost.isEmpty,
               !configuration.trimmedUsername.isEmpty,
               !password.isEmpty else {
             return
         }
 
-        connect(to: startupChannelID)
+        guard await performChannelDiscovery(selection: .firstDiscovered) else {
+            return
+        }
+
+        connect()
     }
 
     private func restartDoorbellMonitoring() {
@@ -558,6 +576,11 @@ final class AppViewModel: ObservableObject {
         }
     }
 
+
+private enum ChannelDiscoverySelection {
+    case preserveCurrentOrFirst
+    case firstDiscovered
+}
     private func startTalkback(clearIncomingCall: Bool) async throws {
         guard isDoorbellPlaybackActive else {
             return

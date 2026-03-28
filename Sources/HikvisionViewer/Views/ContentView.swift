@@ -58,13 +58,22 @@ struct ContentView: View {
 
                 Spacer()
 
-                bottomControlStrip
+                controlStrips
                     .padding(14)
             }
         }
     }
 
-    private var bottomControlStrip: some View {
+    private var controlStrips: some View {
+        VStack(alignment: .trailing, spacing: 10) {
+            secondaryControlStrip
+                .frame(maxWidth: .infinity, alignment: .trailing)
+
+            primaryControlStrip
+        }
+    }
+
+    private var primaryControlStrip: some View {
         HStack(spacing: 12) {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 10) {
@@ -105,21 +114,26 @@ struct ContentView: View {
 
             Divider()
                 .frame(height: 24)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
 
-            HStack(spacing: 10) {
-                Button(viewModel.streamModeTitle) {
-                    viewModel.toggleDoorbellStreamMode()
-                }
-                .buttonStyle(.borderedProminent)
-                .tint(viewModel.streamModeTitle == "HD" ? .blue : .teal)
-                .frame(minHeight: 34)
-
-                Button(viewModel.isMuted ? "Unmute" : "Mute") {
-                    viewModel.toggleMute()
-                }
-                .buttonStyle(.borderedProminent)
-                .frame(minHeight: 34)
+    private var secondaryControlStrip: some View {
+        HStack(spacing: 10) {
+            Button(viewModel.streamModeTitle) {
+                viewModel.toggleDoorbellStreamMode()
             }
+            .buttonStyle(.borderedProminent)
+            .tint(viewModel.streamModeTitle == "HD" ? .blue : .teal)
+            .frame(minHeight: 34)
+
+            Button(viewModel.isMuted ? "Unmute" : "Mute") {
+                viewModel.toggleMute()
+            }
+            .buttonStyle(.borderedProminent)
+            .frame(minHeight: 34)
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 12)

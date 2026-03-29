@@ -17,6 +17,9 @@ enum CredentialStoreError: LocalizedError {
 
 struct CredentialStore {
     private let service = "com.bgazzera.HikvisionViewer"
+#if os(iOS)
+    private let fallbackStore = UserDefaults.standard
+#endif
 
     func loadPassword(host: String, username: String) throws -> String? {
         let account = accountName(host: host, username: username)
@@ -32,8 +35,18 @@ struct CredentialStore {
         let status = SecItemCopyMatching(query as CFDictionary, &item)
 
         if status == errSecItemNotFound {
+#if os(iOS)
+            return fallbackStore.string(forKey: fallbackKey(for: account))
+#else
             return nil
+#endif
         }
+
+#if os(iOS)
+        if isKeychainFallbackStatus(status) {
+            return fallbackStore.string(forKey: fallbackKey(for: account))
+        }
+#endif
 
         guard status == errSecSuccess else {
             throw CredentialStoreError.unexpectedStatus(status)
@@ -60,8 +73,18 @@ struct CredentialStore {
 
         let updateStatus = SecItemUpdate(query as CFDictionary, attributes as CFDictionary)
         if updateStatus == errSecSuccess {
+#if os(iOS)
+            fallbackStore.removeObject(forKey: fallbackKey(for: account))
+#endif
             return
         }
+
+#if os(iOS)
+        if isKeychainFallbackStatus(updateStatus) {
+            fallbackStore.set(password, forKey: fallbackKey(for: account))
+            return
+        }
+#endif
 
         if updateStatus != errSecItemNotFound {
             throw CredentialStoreError.unexpectedStatus(updateStatus)
@@ -70,6 +93,12 @@ struct CredentialStore {
         var insertQuery = query
         insertQuery[kSecValueData as String] = encoded
         let insertStatus = SecItemAdd(insertQuery as CFDictionary, nil)
+#if os(iOS)
+        if isKeychainFallbackStatus(insertStatus) {
+            fallbackStore.set(password, forKey: fallbackKey(for: account))
+            return
+        }
+#endif
         guard insertStatus == errSecSuccess else {
             throw CredentialStoreError.unexpectedStatus(insertStatus)
         }
@@ -78,4 +107,14 @@ struct CredentialStore {
     private func accountName(host: String, username: String) -> String {
         "\(host.lowercased())::\(username)"
     }
+
+#if os(iOS)
+    private func fallbackKey(for account: String) -> String {
+        "\(service).fallback.\(account)"
+    }
+
+    private func isKeychainFallbackStatus(_ status: OSStatus) -> Bool {
+        status == errSecMissingEntitlement
+    }
+#endif
 }

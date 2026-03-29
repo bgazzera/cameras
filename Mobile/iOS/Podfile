@@ -1,0 +1,14 @@
+platform :ios, '17.0'
+
+project 'HikvisionViewerMobile.xcodeproj'
+
+use_frameworks!
+
+target 'HikvisionViewerMobile' do
+  pod 'VLCKit', '~> 4.0.0a18'
+end
+
+target 'HikvisionViewerMobileTests' do
+  inherit! :search_paths
+  pod 'VLCKit', '~> 4.0.0a18'
+end

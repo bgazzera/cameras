@@ -1,0 +1,9 @@
+Android/.gradle/
+Android/.gradle-home/
+Android/.gradle-dist/
+Android/app/build/
+Android/build/
+Android/local.properties
+iOS/Pods/
+iOS/HikvisionViewerMobile.xcodeproj/
+iOS/HikvisionViewerMobile.xcworkspace/
